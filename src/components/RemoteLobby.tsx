@@ -32,8 +32,14 @@ export default function RemoteLobby({
   };
 
   const getDefaultPort = () => {
-    if (typeof window !== 'undefined' && window.location.port) {
-      return window.location.port;
+    if (typeof window !== 'undefined') {
+      if (window.location.port) {
+        return window.location.port;
+      }
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return '3001';
+      }
+      return '';
     }
     return '3001';
   };
