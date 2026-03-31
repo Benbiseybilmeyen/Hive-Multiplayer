@@ -1,0 +1,21 @@
+﻿src/components/RLDashboard.tsx(7,3): error TS6133: 'LineChart' is declared but its value is never read.
+src/components/RLDashboard.tsx(12,52): error TS6133: 'Save' is declared but its value is never read.
+src/components/RLDashboard.tsx(12,58): error TS6133: 'Download' is declared but its value is never read.
+src/components/RLDashboard.tsx(24,10): error TS6133: 'rewardHistory' is declared but its value is never read.
+src/components/RLDashboard.tsx(169,24): error TS2503: Cannot find namespace 'JSX'.
+src/components/RLDashboard.tsx(199,31): error TS2503: Cannot find namespace 'JSX'.
+src/components/RLDashboard.tsx(321,27): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(props: { size?: number | undefined; className?: string | undefined; }, context?: any): string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstructor<any>> | ... 4 more ... | undefined', gave the following error.
+    Type '{ size: number; style: { color: string; }; }' is not assignable to type 'IntrinsicAttributes & { size?: number | undefined; className?: string | undefined; }'.
+      Property 'style' does not exist on type 'IntrinsicAttributes & { size?: number | undefined; className?: string | undefined; }'.
+  Overload 2 of 2, '(props: { size?: number | undefined; className?: string | undefined; }): string | number | bigint | boolean | ReactElement<unknown, string | JSXElementConstructor<any>> | ... 4 more ... | undefined', gave the following error.
+    Type '{ size: number; style: { color: string; }; }' is not assignable to type 'IntrinsicAttributes & { size?: number | undefined; className?: string | undefined; }'.
+      Property 'style' does not exist on type 'IntrinsicAttributes & { size?: number | undefined; className?: string | undefined; }'.
+src/components/RLDashboard.tsx(369,45): error TS6133: 'lossRate' is declared but its value is never read.
+src/rl/dqn.ts(178,7): error TS2322: Type 'Float32Array<ArrayBufferLike>' is not assignable to type 'Float32Array<ArrayBuffer>'.
+  Type 'ArrayBufferLike' is not assignable to type 'ArrayBuffer'.
+    Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer'.
+      Types of property '[Symbol.toStringTag]' are incompatible.
+        Type '"SharedArrayBuffer"' is not assignable to type '"ArrayBuffer"'.
+src/rl/stateEncoder.ts(7,45): error TS6133: 'HEX_DIRS' is declared but its value is never read.
+src/rl/stateEncoder.ts(8,10): error TS6133: 'posKey' is declared but its value is never read.

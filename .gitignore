@@ -1,0 +1,7 @@
+node_modules
+dist
+.vite
+*.log
+.DS_Store
+errors.txt
+tsc_errors.txt
