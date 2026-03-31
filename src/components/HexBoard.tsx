@@ -55,9 +55,20 @@ export default function HexBoard({
 }: HexBoardProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+  const transformRef = useRef(transform);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const dragStartRef = useRef({ x: 0, y: 0 });
   const [hoveredHex, setHoveredHex] = useState<string | null>(null);
+
+  // For tablet/mobile pinch-to-zoom and safe multi-touch
+  const pointerCache = useRef<Record<number, { clientX: number, clientY: number }>>({});
+  const initialPinchDistance = useRef<number | null>(null);
+  const initialPinchScale = useRef<number | null>(null);
+
+  // Keep ref in sync
+  useEffect(() => {
+    transformRef.current = transform;
+  }, [transform]);
 
   // Center board initially
   useEffect(() => {
@@ -77,25 +88,72 @@ export default function HexBoard({
   }, []);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if ((e.target as Element).tagName === 'svg' || e.shiftKey) {
-      setIsDragging(true);
-      setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
-      (e.target as Element).setPointerCapture(e.pointerId);
+    pointerCache.current[e.pointerId] = { clientX: e.clientX, clientY: e.clientY };
+    const pIds = Object.keys(pointerCache.current);
+
+    if (pIds.length === 1) {
+      // Allow drag if target is svg, or shift key is pressed, or if it's touch (tablets need easy dragging)
+      if ((e.target as Element).tagName === 'svg' || e.shiftKey || e.pointerType === 'touch') {
+        setIsDragging(true);
+        dragStartRef.current = { 
+          x: e.clientX - transformRef.current.x, 
+          y: e.clientY - transformRef.current.y 
+        };
+        try { svgRef.current?.setPointerCapture(e.pointerId); } catch {}
+      }
+    } else if (pIds.length === 2) {
+      // Start pinch
+      const p1 = pointerCache.current[Number(pIds[0])];
+      const p2 = pointerCache.current[Number(pIds[1])];
+      const dist = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+      initialPinchDistance.current = dist;
+      initialPinchScale.current = transformRef.current.scale;
     }
-  }, [transform.x, transform.y]);
+  }, []);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isDragging) return;
-    setTransform(prev => ({
-      ...prev,
-      x: e.clientX - dragStart.x,
-      y: e.clientY - dragStart.y
-    }));
-  }, [isDragging, dragStart]);
+    if (pointerCache.current[e.pointerId]) {
+      pointerCache.current[e.pointerId] = { clientX: e.clientX, clientY: e.clientY };
+    }
+    const pIds = Object.keys(pointerCache.current);
+
+    if (pIds.length === 2 && initialPinchDistance.current !== null && initialPinchScale.current !== null) {
+      // Handle pinch zoom
+      const p1 = pointerCache.current[Number(pIds[0])];
+      const p2 = pointerCache.current[Number(pIds[1])];
+      const dist = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+      const newScale = Math.min(Math.max(0.2, initialPinchScale.current * (dist / initialPinchDistance.current)), 3);
+      setTransform(prev => ({ ...prev, scale: newScale }));
+    } else if (isDragging && pIds.length === 1) {
+      // Handle drag pan
+      setTransform(prev => ({
+        ...prev,
+        x: e.clientX - dragStartRef.current.x,
+        y: e.clientY - dragStartRef.current.y
+      }));
+    }
+  }, [isDragging]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    setIsDragging(false);
-    try { (e.target as Element).releasePointerCapture(e.pointerId); } catch {}
+    delete pointerCache.current[e.pointerId];
+    const pIds = Object.keys(pointerCache.current);
+
+    if (pIds.length < 2) {
+      initialPinchDistance.current = null;
+      initialPinchScale.current = null;
+    }
+    
+    if (pIds.length === 0) {
+      setIsDragging(false);
+      try { svgRef.current?.releasePointerCapture(e.pointerId); } catch {}
+    } else if (pIds.length === 1) {
+      // Re-adjust drag start for the remaining finger so it doesn't jump
+      const remaining = pointerCache.current[Number(pIds[0])];
+      dragStartRef.current = { 
+        x: remaining.clientX - transformRef.current.x, 
+        y: remaining.clientY - transformRef.current.y 
+      };
+    }
   }, []);
 
   // Collect all hexes to render
@@ -135,7 +193,7 @@ export default function HexBoard({
   const isDark = theme !== 'minimalist';
 
   return (
-    <div className="w-full h-full relative overflow-hidden" style={{ background: 'var(--board-bg)', cursor: isDragging ? 'grabbing' : 'grab' }}>
+    <div className="w-full h-full relative overflow-hidden" style={{ background: 'var(--board-bg)', cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}>
       {/* Ambient glow effect behind board */}
       <div className="absolute inset-0 pointer-events-none" style={{
         background: `radial-gradient(circle at 50% 50%, var(--accent-glow) 0%, transparent 60%)`,
