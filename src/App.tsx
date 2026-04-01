@@ -10,10 +10,9 @@ import {
 import { AIMoveResult } from './ai';
 import HexBoard from './components/HexBoard';
 import PieceIcon, { PIECE_ACCENT } from './components/PieceIcon';
-import RLDashboard from './components/RLDashboard';
 import RemoteLobby from './components/RemoteLobby';
 import { useMultiplayer } from './hooks/useMultiplayer';
-import { Brain, Settings, Users, Globe, ChevronLeft, ChevronRight, Activity, Target, Clock, Trash2, FlaskConical, Zap } from 'lucide-react';
+import { Brain, Settings, Users, Globe, ChevronLeft, ChevronRight, Activity, Target, Clock, Trash2, Maximize, Minimize } from 'lucide-react';
 
 // ─── Match History persistence ──────────────────────────
 interface MatchRecord {
@@ -24,6 +23,7 @@ interface MatchRecord {
   winner: PlayerColor | 'draw' | null;
   totalMoves: number;
   theme: string;
+  moves?: Move[];
 }
 
 function loadMatchHistory(): MatchRecord[] {
@@ -38,8 +38,8 @@ function saveMatchHistory(records: MatchRecord[]) {
 }
 
 function App() {
-  const [appState, setAppState] = useState<'menu' | 'playing' | 'post_match' | 'rl_lab' | 'remote_lobby'>('menu');
-  const [menuTab, setMenuTab] = useState<'play' | 'history' | 'rl_lab'>('play');
+  const [appState, setAppState] = useState<'menu' | 'playing' | 'post_match' | 'remote_lobby'>('menu');
+  const [menuTab, setMenuTab] = useState<'play' | 'history'>('play');
   const [gameMode, setGameMode] = useState<GameMode>('local');
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty>('intermediate');
   const [theme, setTheme] = useState<'modern' | 'wood' | 'minimalist'>('modern');
@@ -66,8 +66,7 @@ function App() {
   const [message, setMessage] = useState('');
   const [myRemoteColor, setMyRemoteColor] = useState<PlayerColor | null>(null);
   
-  const [showRLDashboard, setShowRLDashboard] = useState(false);
-  const [aiMetrics, setAiMetrics] = useState({ nodes: 0, time: 0, eval: 0 });
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const aiTimeoutRef = useRef<number | null>(null);
   const aiIntervalRef = useRef<number | null>(null);
@@ -105,7 +104,7 @@ function App() {
   }, [clearSelection]);
 
   // Save match result when game ends
-  const saveMatchResult = useCallback((finalState: GameState) => {
+  const saveMatchResult = useCallback((finalState: GameState, matchHistoryMoves: Move[]) => {
     const record: MatchRecord = {
       id: Date.now().toString(),
       date: new Date().toISOString(),
@@ -113,7 +112,8 @@ function App() {
       difficulty: gameMode === 'ai' ? aiDifficulty : undefined,
       winner: finalState.winner,
       totalMoves: finalState.moveCount,
-      theme
+      theme,
+      moves: matchHistoryMoves
     };
     const updated = [record, ...matchHistory].slice(0, 50); // keep last 50
     setMatchHistory(updated);
@@ -129,7 +129,17 @@ function App() {
         evaluation: evaluateState(newState, 'black'),
         state: newState
       };
-      setHistory(h => [...h, record]);
+      setHistory(prevHistory => {
+        const newHistory = [...prevHistory, record];
+        if (newState.gameOver) {
+          saveMatchResult(newState, newHistory.map(r => r.move));
+          setTimeout(() => {
+            setAppState('post_match');
+            setReplayIndex(newHistory.length - 1);
+          }, 2000);
+        }
+        return newHistory;
+      });
 
       if (move.type === 'pass') {
         setMessage(`Rakip pas geçti.`);
@@ -139,16 +149,6 @@ function App() {
         setMessage(`Rakip ${PIECE_NAMES[move.pieceType!]} hareket ettirdi.`);
       }
 
-      if (newState.gameOver) {
-        saveMatchResult(newState);
-        setTimeout(() => {
-          setAppState('post_match');
-          setHistory(currentHistory => {
-            setReplayIndex(currentHistory.length - 1);
-            return currentHistory;
-          });
-        }, 2000);
-      }
       return newState;
     });
     clearSelection();
@@ -200,8 +200,13 @@ function App() {
       setMessage(`${targetState.currentPlayer === 'white' ? 'Beyaz' : 'Siyah'} ${PIECE_NAMES[move.pieceType!]} hareket ettirdi.`);
     }
 
+    // Send move to remote opponent first, so they process it before room is closed
+    if (gameMode === 'remote') {
+      multiplayer.sendMove(move);
+    }
+
     if (newState.gameOver) {
-      saveMatchResult(newState);
+      saveMatchResult(newState, [...history, record].map(r => r.move));
       if (gameMode === 'remote') {
         multiplayer.sendGameOver(newState.winner);
       }
@@ -213,12 +218,7 @@ function App() {
         });
       }, 2000);
     }
-
-    // Send move to remote opponent
-    if (gameMode === 'remote') {
-      multiplayer.sendMove(move);
-    }
-  }, [state, clearSelection, saveMatchResult, gameMode, multiplayer]);
+  }, [state, history, clearSelection, saveMatchResult, gameMode, multiplayer]);
 
   // AI Turn (Strict 10s limits)
   const isAiThinkingRef = useRef(false);
@@ -272,12 +272,6 @@ function App() {
             setTimeout(() => {
               if (aiIntervalRef.current) clearInterval(aiIntervalRef.current);
               
-              setAiMetrics({
-                nodes: Math.floor(Math.random() * 5000) + 1000,
-                time: Math.floor(elapsed),
-                eval: result.evaluation
-              });
-
               isAiThinkingRef.current = false;
               setAiThinking(false);
               setAiTimer(0);
@@ -466,7 +460,7 @@ function App() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-1.5">
+        <div className="flex flex-row md:flex-col gap-2 overflow-x-auto pb-1 md:pb-0 items-stretch [&::-webkit-scrollbar]:hidden">
           {(Object.keys(hand) as PieceType[]).map(pt => {
             const count = hand[pt];
             const isSelected = selectedHandPiece === pt && displayState.currentPlayer === color;
@@ -478,7 +472,7 @@ function App() {
                 key={pt}
                 onClick={() => handleHandPieceClick(pt)}
                 disabled={disabled}
-                className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all duration-200 ${
+                className={`flex-none min-w-[130px] md:min-w-0 flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all duration-200 ${
                   isSelected
                     ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-[var(--text-primary)] shadow-[0_0_12px_var(--accent-glow)]'
                     : disabled
@@ -594,17 +588,6 @@ function App() {
               {matchHistory.length > 0 && (
                 <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full">{matchHistory.length}</span>
               )}
-            </button>
-            <button
-              onClick={() => setMenuTab('rl_lab')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                menuTab === 'rl_lab'
-                  ? 'bg-[var(--accent)] text-white shadow-lg'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              <FlaskConical size={15} />
-              RL Lab
             </button>
           </div>
 
@@ -777,6 +760,28 @@ function App() {
                               <span>{match.totalMoves} hamle</span>
                             </div>
                           </div>
+                          {match.moves && (
+                            <button
+                              onClick={() => {
+                                let currentState = createInitialState();
+                                const reconstructedHistory: MoveRecord[] = [];
+                                for (const m of match.moves!) {
+                                  currentState = applyMove(currentState, m);
+                                  reconstructedHistory.push({
+                                    move: m,
+                                    evaluation: evaluateState(currentState, 'black'),
+                                    state: currentState
+                                  });
+                                }
+                                setHistory(reconstructedHistory);
+                                setReplayIndex(reconstructedHistory.length - 1);
+                                setAppState('post_match');
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-[var(--accent)] text-white text-[10px] font-bold tracking-wider hover:bg-[var(--accent-hover)] transition-colors shadow-lg"
+                            >
+                              İzle
+                            </button>
+                          )}
                           <button
                             onClick={() => deleteMatch(match.id)}
                             className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-500/15 text-red-400/50 hover:text-red-400 transition-all"
@@ -792,68 +797,9 @@ function App() {
             </div>
           )}
 
-          {/* ─── RL LAB TAB ─── */}
-          {menuTab === 'rl_lab' && (
-            <div className="animate-fade-in">
-              <div className="text-center py-4 mb-4">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-600/20 to-indigo-600/20 border border-violet-500/20 mb-4">
-                  <Brain size={28} className="text-violet-400" />
-                </div>
-                <h2 className="text-lg font-bold text-white mb-1">Deep Q-Learning Lab</h2>
-                <p className="text-xs text-[var(--text-secondary)] max-w-sm mx-auto">
-                  Train a neural network agent through self-play. Watch it learn strategies in real-time with live loss curves, policy updates, and network visualizations.
-                </p>
-              </div>
-
-              <button
-                onClick={() => setAppState('rl_lab')}
-                className="w-full flex items-center gap-4 p-5 rounded-xl border border-violet-500/20 bg-violet-500/5 hover:border-violet-500/40 hover:bg-violet-500/10 transition-all group"
-              >
-                <div className="bg-gradient-to-br from-violet-600 to-indigo-600 p-3.5 rounded-xl group-hover:shadow-[0_0_25px_rgba(139,92,246,0.4)] transition-all duration-300">
-                  <Zap size={22} className="text-white" />
-                </div>
-                <div className="text-left flex-1">
-                  <h3 className="font-bold text-base text-white">Open Training Dashboard</h3>
-                  <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">Live Monitor • Loss Curves • Policy Viewer • Network Architecture</p>
-                </div>
-                <div className="text-violet-400 group-hover:translate-x-1 transition-transform">
-                  <ChevronRight size={20} />
-                </div>
-              </button>
-
-              {/* Feature cards */}
-              <div className="grid grid-cols-2 gap-3 mt-4">
-                <div className="p-3 rounded-xl border border-[var(--panel-border)] bg-black/15">
-                  <div className="text-lg mb-1">📉</div>
-                  <h4 className="text-[11px] font-bold text-white">Loss Curves</h4>
-                  <p className="text-[9px] text-[var(--text-secondary)] mt-0.5">Real-time MSE loss with smoothed moving average</p>
-                </div>
-                <div className="p-3 rounded-xl border border-[var(--panel-border)] bg-black/15">
-                  <div className="text-lg mb-1">🧠</div>
-                  <h4 className="text-[11px] font-bold text-white">Network Viz</h4>
-                  <p className="text-[9px] text-[var(--text-secondary)] mt-0.5">Animated neural network with live activations</p>
-                </div>
-                <div className="p-3 rounded-xl border border-[var(--panel-border)] bg-black/15">
-                  <div className="text-lg mb-1">🎯</div>
-                  <h4 className="text-[11px] font-bold text-white">Policy Updates</h4>
-                  <p className="text-[9px] text-[var(--text-secondary)] mt-0.5">Q-value distributions and action preferences</p>
-                </div>
-                <div className="p-3 rounded-xl border border-[var(--panel-border)] bg-black/15">
-                  <div className="text-lg mb-1">⚡</div>
-                  <h4 className="text-[11px] font-bold text-white">Self-Play</h4>
-                  <p className="text-[9px] text-[var(--text-secondary)] mt-0.5">Autonomous training via Web Worker</p>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     );
-  }
-
-  // ── RL LAB VIEW ──
-  if (appState === 'rl_lab') {
-    return <RLDashboard onBack={() => setAppState('menu')} />;
   }
 
   // ── REMOTE LOBBY VIEW ──
@@ -903,16 +849,6 @@ function App() {
             </button>
           )}
 
-          {gameMode === 'ai' && appState === 'playing' && (
-             <button
-              onClick={() => setShowRLDashboard(!showRLDashboard)}
-              className={`p-2 rounded-xl border transition-all ${showRLDashboard ? 'bg-[var(--accent)]/15 border-[var(--accent)]/30 text-[var(--accent)]' : 'border-[var(--panel-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
-              title="Toggle RL Dashboard"
-             >
-               <Activity size={16} />
-             </button>
-          )}
-
           {appState === 'playing' && history.length > 0 && (
              <button
               onClick={() => {
@@ -926,6 +862,22 @@ function App() {
           )}
 
           <button
+            onClick={() => {
+              if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+                setIsFullscreen(true);
+              } else {
+                document.exitFullscreen();
+                setIsFullscreen(false);
+              }
+            }}
+            className="p-1.5 rounded-xl border border-[var(--panel-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)]/40 transition-all ml-2"
+            title="Tam Ekran"
+          >
+            {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+          </button>
+
+          <button
             onClick={() => setAppState('menu')}
             className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-xs px-3 py-1.5 rounded-xl border border-[var(--panel-border)] hover:border-[var(--accent)]/40 transition-all"
           >
@@ -935,48 +887,11 @@ function App() {
       </header>
 
       {/* ── MAIN CONTENT ── */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         
-        {/* Left Side: White Player & RL Dashboard */}
-        <aside className="w-72 p-4 flex flex-col gap-4 overflow-y-auto border-r border-[var(--panel-border)] z-10" style={{ background: 'color-mix(in srgb, var(--bg-main) 85%, transparent)' }}>
+        {/* Left Side: White Player */}
+        <aside className="w-full md:w-72 p-2 md:p-4 flex flex-col gap-2 md:gap-4 overflow-x-auto md:overflow-y-auto border-b md:border-b-0 md:border-r border-[var(--panel-border)] z-10 shrink-0" style={{ background: 'color-mix(in srgb, var(--bg-main) 85%, transparent)' }}>
           {renderHand('white')}
-
-          {showRLDashboard && gameMode === 'ai' && (
-            <div className="mt-auto p-4 rounded-2xl glass-card animate-float-up">
-              <h3 className="text-[10px] font-bold text-[var(--accent)] mb-3 flex items-center gap-2 uppercase tracking-[0.2em]">
-                <Activity size={12} /> MCTS / RL Monitor
-              </h3>
-              <div className="space-y-3 text-xs font-mono">
-                <div className="flex justify-between">
-                  <span className="text-[var(--text-secondary)]">Nodes:</span>
-                  <span className="text-green-400">{aiMetrics.nodes.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--text-secondary)]">Time:</span>
-                  <span>{aiMetrics.time}ms</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--text-secondary)]">Eval:</span>
-                  <span className={aiMetrics.eval > 0 ? 'text-green-400' : aiMetrics.eval < 0 ? 'text-red-400' : 'text-gray-400'}>
-                    {aiMetrics.eval > 0 ? '+' : ''}{aiMetrics.eval.toFixed(1)}
-                  </span>
-                </div>
-                
-                {/* Win Probability Bar */}
-                <div className="pt-2">
-                  <div className="flex justify-between mb-1 text-[9px] text-gray-500 font-sans">
-                    <span>W</span><span>B</span>
-                  </div>
-                  <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden flex">
-                    <div 
-                      className="bg-gradient-to-r from-slate-200 to-slate-300 h-full rounded-full transition-all duration-700" 
-                      style={{ width: `${Math.max(5, Math.min(95, 50 - (aiMetrics.eval / 20)))}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </aside>
 
         {/* Center: Board */}
@@ -1001,7 +916,7 @@ function App() {
 
           {/* Replay Controls Overlay */}
           {appState === 'post_match' && (
-             <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 backdrop-blur-xl border border-[var(--panel-border)] p-3 rounded-2xl shadow-2xl z-20 animate-float-up" style={{ background: 'var(--panel-bg)' }}>
+             <div className="absolute bottom-4 md:bottom-8 left-1/2 -translate-x-1/2 flex items-center justify-between gap-2 md:gap-4 backdrop-blur-xl border border-[var(--panel-border)] p-2 md:p-3 rounded-2xl shadow-2xl z-20 animate-float-up w-[90%] md:w-auto max-w-md" style={{ background: 'var(--panel-bg)' }}>
                <button 
                  onClick={() => setReplayIndex(Math.max(0, replayIndex - 1))}
                  disabled={replayIndex <= 0}
@@ -1031,7 +946,7 @@ function App() {
         </main>
 
         {/* Right Side: Black Player */}
-        <aside className="w-72 p-4 flex flex-col gap-4 overflow-y-auto border-l border-[var(--panel-border)] z-10" style={{ background: 'color-mix(in srgb, var(--bg-main) 85%, transparent)' }}>
+        <aside className="w-full md:w-72 p-2 md:p-4 flex flex-col gap-2 md:gap-4 overflow-x-auto md:overflow-y-auto border-t md:border-t-0 md:border-l border-[var(--panel-border)] z-10 shrink-0" style={{ background: 'color-mix(in srgb, var(--bg-main) 85%, transparent)' }}>
           {renderHand('black')}
           
           {/* Post Match Info Box */}

@@ -210,27 +210,7 @@ export default function HexBoard({
         onPointerCancel={handlePointerUp}
       >
         <defs>
-          {/* Piece shadows */}
-          <filter id="piece-shadow" x="-30%" y="-30%" width="160%" height="160%">
-            <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor={isDark ? '#000' : '#94a3b8'} floodOpacity={isDark ? "0.6" : "0.3"} />
-          </filter>
-          <filter id="stack-shadow" x="-30%" y="-30%" width="160%" height="160%">
-            <feDropShadow dx="0" dy="8" stdDeviation="8" floodColor="#000" floodOpacity="0.7" />
-          </filter>
-          <filter id="selected-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="6" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-          <filter id="placement-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="4" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
+
 
           {/* Gradients for white/black pieces */}
           <linearGradient id="grad-white" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -290,7 +270,7 @@ export default function HexBoard({
                   onPointerEnter={() => setHoveredHex(key)}
                   onPointerLeave={() => setHoveredHex(null)}
                   className="cursor-pointer"
-                  style={{ filter: 'url(#placement-glow)' }}
+                  style={{ filter: isHovered ? 'drop-shadow(0 0 8px var(--valid-move-stroke))' : 'none' }}
                 >
                   {/* Outer pulse ring */}
                   <polygon
@@ -332,7 +312,7 @@ export default function HexBoard({
                   onPointerEnter={() => setHoveredHex(key)}
                   onPointerLeave={() => setHoveredHex(null)}
                   className="cursor-pointer"
-                  style={{ filter: 'url(#placement-glow)' }}
+                  style={{ filter: isHovered ? 'drop-shadow(0 0 8px var(--accent))' : 'none' }}
                 >
                   <polygon
                     points={hexPoints}
@@ -365,7 +345,7 @@ export default function HexBoard({
                 onPointerLeave={() => setHoveredHex(null)}
                 className="cursor-pointer"
                 style={{
-                  filter: isSelected ? 'url(#selected-glow)' : stack.length > 1 ? 'url(#stack-shadow)' : 'url(#piece-shadow)',
+                  filter: isSelected ? 'drop-shadow(0 0 10px var(--accent))' : stack.length > 1 ? 'drop-shadow(0 6px 8px rgba(0,0,0,0.6))' : (isDark ? 'drop-shadow(0 4px 6px rgba(0,0,0,0.5))' : 'drop-shadow(0 4px 6px rgba(100,116,139,0.3))'),
                   transition: 'transform 0.2s ease-out'
                 }}
               >

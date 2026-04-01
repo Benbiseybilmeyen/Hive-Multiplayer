@@ -25,6 +25,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import http from 'http';
+import https from 'https';
 import os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -297,3 +298,14 @@ setInterval(() => {
   }
 }, 30000);
 
+// ─── Keep-Alive Ping (Render Free Tier) ──────────────────────────────────────
+const RENDER_URL = 'https://hive-multiplayer.onrender.com';
+setInterval(() => {
+  https.get(RENDER_URL, (res) => {
+    if (res.statusCode === 200) {
+      console.log(`[+] Self-ping successful, keeping server awake.`);
+    }
+  }).on('error', (err) => {
+    console.log(`[!] Self-ping failed:`, err.message);
+  });
+}, 10 * 60 * 1000); // Ping every 10 minutes
